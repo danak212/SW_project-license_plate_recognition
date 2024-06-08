@@ -1,5 +1,5 @@
-imutils==0.5.4
-numpy==1.24.3
-opencv-contrib-python==4.7.0.72
-opencv-python==4.7.0.72
-scikit-image==0.19.3
+imutils
+numpy
+opencv-contrib-python
+opencv-python
+scikit-image
