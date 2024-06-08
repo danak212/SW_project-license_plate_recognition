@@ -2,8 +2,8 @@ import cv2
 import json
 import argparse
 from pathlib import Path
-from program import process_image
-from program import char_det
+from processing.utils import process_image
+from processing.utils import char_det
 
 
 def main():
@@ -12,7 +12,7 @@ def main():
     arg_parser.add_argument("output_json")
     arguments = arg_parser.parse_args()
 
-    chars_folder = Path("./chars")
+    chars_folder = Path("./data/chars")
     characters = char_det(chars_folder)
 
     photo_dir = Path(arguments.plates_photos)
