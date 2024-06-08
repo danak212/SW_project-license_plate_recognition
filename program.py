@@ -186,11 +186,11 @@ def enhance_plate_image(plate_img, orig_img, idx):
     if not combined_mask.any():
         combined_mask = np.zeros_like(otsu_thresh_bgr)
     try:
-        LT = [0, 0]
-        LB = [0, plate_img.shape[0]]
-        RT = [plate_img.shape[1], 0]
-        RB = [plate_img.shape[1], plate_img.shape[0]]
-        points = [LT, LB, RB, RT]
+        LP = [0, 0]
+        LT = [0, plate_img.shape[0]]
+        PP = [plate_img.shape[1], 0]
+        PT = [plate_img.shape[1], plate_img.shape[0]]
+        points = [LP, LT, PT, PP]
         mask_corners = []
         for point in points:
             distances = np.linalg.norm(
@@ -205,13 +205,13 @@ def enhance_plate_image(plate_img, orig_img, idx):
             )
         result = cv.bitwise_and(otsu_thresh_bgr, combined_mask)
         pts2 = np.array(
-            [[0, 0], [0, 114 * 2], [520 * 2, 114 * 2], [520 * 2, 0]], np.float32
+            [[0, 0], [0, 112 * 2], [520 * 2, 112 * 2], [520 * 2, 0]], np.float32
         )
         matrix = cv.getPerspectiveTransform(
             np.float32(np.array(mask_corners).reshape(4, 2)), pts2
         )
         result = cv.warpPerspective(
-            cv.cvtColor(result, cv.COLOR_BGR2GRAY), matrix, (520 * 2, 114 * 2)
+            cv.cvtColor(result, cv.COLOR_BGR2GRAY), matrix, (520 * 2, 112 * 2)
         )
         result = cv.copyMakeBorder(result, 5, 5, 5, 5, cv.BORDER_CONSTANT, None, 255)
 
@@ -225,9 +225,7 @@ def enhance_plate_image(plate_img, orig_img, idx):
 
 def adjust_contrast(image: np.ndarray) -> np.ndarray:
     contrast_factor = 1.1
-    brightness_offset = 1
-
-    enhanced_image = cv.convertScaleAbs(image, alpha=contrast_factor, beta=brightness_offset)
+    enhanced_image = cv.convertScaleAbs(image, alpha=contrast_factor)
     return enhanced_image
 
 
@@ -240,11 +238,6 @@ def locate_plate(img: np.ndarray, gray_img):
     struct_element = cv.getStructuringElement(
         cv.MORPH_RECT,
         (dilate_size, dilate_size),
-    )
-    processed_img = cv.erode(edges, np.ones((7, 7), np.uint8))
-    processed_img = cv.morphologyEx(processed_img, cv.MORPH_OPEN, np.ones((5, 5), np.uint8))
-    processed_img = cv.morphologyEx(
-        processed_img, cv.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=1
     )
     processed_img = cv.dilate(edges, struct_element, iterations=1)
 
@@ -272,8 +265,8 @@ def locate_plate(img: np.ndarray, gray_img):
                 # Extracting the candidate plate
                 plate_candidates.append(
                     gray_img[
-                        int(y * 0.94): int((y + h) * 1.06),
-                        int(x * 0.94): int((x + w) * 1.06),
+                        int(y * 0.95): int((y + h) * 1.05),
+                        int(x * 0.95): int((x + w) * 1.05),
                     ]
                 )
     if not len(plate_candidates):
@@ -281,8 +274,7 @@ def locate_plate(img: np.ndarray, gray_img):
         adaptive_thresh = cv.adaptiveThreshold(
             img, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 23, 1
         )
-        adaptive_thresh = cv.morphologyEx(adaptive_thresh, cv.MORPH_CLOSE, (7, 7))
-        adaptive_thresh = cv.morphologyEx(adaptive_thresh, cv.MORPH_OPEN, (7, 7))
+        adaptive_thresh = cv.morphologyEx(adaptive_thresh, cv.MORPH_CLOSE, (6, 6))
         color_thresh = cv.cvtColor(adaptive_thresh, cv.COLOR_GRAY2BGR)
         contours_adaptive, h = cv.findContours(adaptive_thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
         try:
@@ -297,8 +289,8 @@ def locate_plate(img: np.ndarray, gray_img):
                     plate_bboxes.append(bbox)
                     plate_candidates.append(
                         gray_img[
-                            int(y * 0.94): int((y + h) * 1.06),
-                            int(x * 0.94): int((x + w) * 1.06),
+                            int(y * 0.95): int((y + h) * 1.05),
+                            int(x * 0.95): int((x + w) * 1.05),
                         ]
                     )
         except:
@@ -320,12 +312,12 @@ def process_image(image: np.ndarray, chars) -> str:
     # For each candidate, find the white area of the plate with the numbers
     for i, candidate in enumerate(plate_candidates):
         x, y, w, h = candidate_boxes[i]
-        # Select an area 4% larger to avoid cropping the white plate
+        # Select an area 5% larger to avoid cropping the white plate
         enhanced_plate = enhance_plate_image(
             candidate,
             image[
-                int(y * 0.96): int((y + h) * 1.04),
-                int(x * 0.96): int((x + w) * 1.04),
+                int(y * 0.95): int((y + h) * 1.05),
+                int(x * 0.95): int((x + w) * 1.05),
             ],
             i,
         )
