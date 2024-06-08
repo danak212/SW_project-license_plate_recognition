@@ -4,13 +4,14 @@ import imutils
 from imutils import contours
 
 
-def char_det(src):
-    # wczytanie bazy liter z pliku
+def char_det(source):
+    # Loading character set from files
     chars = {}
-    for char in src.iterdir():
-        charName = char.stem
-        chars[charName] = cv.imread(str(char), 0)
+    for char_file in source.iterdir():
+        char_name = char_file.stem
+        chars[char_name] = cv.imread(str(char_file), 0)
     return chars
+
 
 
 def char_matching(char, chars):
@@ -26,7 +27,6 @@ def char_matching(char, chars):
             best_match = key
             highest_score = max_value
     return str(best_match)
-
 
 
 def extract_plate_chars(plate_img, char_set, idx):
@@ -80,7 +80,6 @@ def extract_plate_chars(plate_img, char_set, idx):
     for i, char in enumerate(plate_text):
         char = "O" if (char == "0" and i < 3) else char
     return "".join(plate_text)
-
 
 
 def enhance_plate_image(plate_img, orig_img, idx):
@@ -237,7 +236,6 @@ def adjust_contrast(image: np.ndarray) -> np.ndarray:
     return enhanced_image
 
 
-
 def locate_plate(img: np.ndarray, gray_img):
     # Using Canny filter to detect edges
     edges = cv.Canny(img, 30, 45)
@@ -311,11 +309,6 @@ def locate_plate(img: np.ndarray, gray_img):
         except:
             pass
     return plate_candidates, plate_bboxes
-
-
-#
-# def onTrack(arg):
-#     pass
 
 
 def process_image(image: np.ndarray, chars) -> str:
