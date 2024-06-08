@@ -13,7 +13,6 @@ def char_det(source):
     return chars
 
 
-
 def char_matching(char, chars):
     highest_score = 0
     best_match = None
@@ -30,30 +29,29 @@ def char_matching(char, chars):
 
 
 def extract_plate_chars(plate_img, char_set, idx):
-    # Convert the plate image to BGR color space
+    # Convert the plate image to BGR color
     plate_bgr = cv.cvtColor(plate_img, cv.COLOR_GRAY2BGR)
-    # Find contours on the inverted mask of the plate image
+    # Find contours
     contours_found = cv.findContours(
         np.bitwise_not(plate_img), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE
     )
     contour_list = imutils.grab_contours(contours_found)
     try:
-        # Sort contours from left to right
+        # Sort contours
         (contour_list, bboxes) = contours.sort_contours(contour_list, method="left-to-right")
     except:
         pass
     potential_chars = []
     for i, contour in enumerate(contour_list):
         x, y, w, h = cv.boundingRect(contour)
-        # Select contours with height greater than 33% of the plate height and appropriate aspect ratio
-        if h >= plate_img.shape[0] / 3 and 0.15 <= w / h <= 1.3:
+        # Select contours
+        if h >= plate_img.shape[0] / 3 and 0.13 <= w / h <= 1.22:
             potential_chars.append(contour)
         sorted_chars = sorted(
             potential_chars,
-            key=lambda a: cv.boundingRect(a)[3],
-            reverse=False,
+            key=lambda a: cv.boundingRect(a)[2],
         )
-    cv.drawContours(plate_bgr, potential_chars, -1, (0, 255, 0), 5)
+    cv.drawContours(plate_bgr, potential_chars, -1, (0, 255, 0), 2)
     roi_characters = []
     # Create bounding boxes for each candidate character and store them
     for candidate in potential_chars:
@@ -66,9 +64,6 @@ def extract_plate_chars(plate_img, char_set, idx):
         transformed_char = cv.warpPerspective(plate_img, transform_matrix, (w, h))
 
         roi_characters.append(transformed_char)
-        rect = cv.minAreaRect(candidate)
-        box_pts = cv.boxPoints(rect)
-        box_pts = np.int0(box_pts)
     plate_text = []
     # Resize extracted characters to 64x64 and perform template matching
     for i, roi in enumerate(roi_characters):
@@ -84,7 +79,7 @@ def extract_plate_chars(plate_img, char_set, idx):
 
 def enhance_plate_image(plate_img, orig_img, idx):
     # Double blurring
-    candidate_index = idx
+    # candidate_index = idx
     plate_img = cv.bilateralFilter(plate_img, 20, 50, 50)
     plate_img = cv.blur(plate_img, (7, 7))
 
@@ -108,12 +103,12 @@ def enhance_plate_image(plate_img, orig_img, idx):
 
     # Convert threshold images to BGR
     otsu_thresh_bgr = cv.cvtColor(otsu_thresh, cv.COLOR_GRAY2BGR)
-    adaptive_thresh_bgr = cv.cvtColor(adaptive_thresh, cv.COLOR_GRAY2BGR)
+    # adaptive_thresh_bgr = cv.cvtColor(adaptive_thresh, cv.COLOR_GRAY2BGR)
 
     # Create empty masks
     mask_otsu = np.zeros_like(otsu_thresh_bgr)
     mask_adaptive = np.zeros_like(otsu_thresh_bgr)
-    otsu_hierarchy = otsu_hierarchy[0]
+    # otsu_hierarchy = otsu_hierarchy[0]
     contours_otsu_list = []
     contours_adaptive_list = []
     combined_mask = np.zeros_like(otsu_thresh_bgr)
@@ -136,10 +131,10 @@ def enhance_plate_image(plate_img, orig_img, idx):
     approx = []
     meanTooLow = False
 
-    # If candidates found in both threshold images, create a combined mask
+    # If candidates found in both threshold images, we will create a combined mask
     if contours_otsu_list and contours_adaptive_list:
-        largest_otsu = sorted(contours_otsu_list, key=cv.contourArea, reverse=True)[0]
-        largest_adaptive = sorted(contours_adaptive_list, key=cv.contourArea, reverse=True)[0]
+        largest_otsu = sorted(contours_otsu_list, key=cv.contourArea)[0]
+        largest_adaptive = sorted(contours_adaptive_list, key=cv.contourArea)[0]
         cv.drawContours(mask_otsu, [largest_otsu], -1, (255, 255, 255), -1)
         cv.drawContours(mask_adaptive, [largest_adaptive], -1, (255, 255, 255), -1)
         combined_mask = cv.bitwise_and(mask_adaptive, mask_otsu)

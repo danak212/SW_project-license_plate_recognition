@@ -2,8 +2,8 @@ import cv2
 import json
 import argparse
 from pathlib import Path
-from tools import process_image
-from tools import char_det
+from program import process_image
+from program import char_det
 
 
 def main():
