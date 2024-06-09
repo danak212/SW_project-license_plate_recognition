@@ -133,6 +133,10 @@ def locate_plate(img: np.ndarray, gray_img):
 
 Wynik zostanie zapisany w pliku JSON, zawierającym rozpoznane tablice rejestracyjne dla każdego zdjęcia.
 
+### Podsumowanie
+
+Ten projekt demonstruje, jak wykorzystać przetwarzanie obrazów i algorytmy dopasowania wzorców do rozpoznawania tablic rejestracyjnych. Proces obejmuje przetwarzanie obrazu, ekstrakcję znaków oraz dopasowywanie wzorców, co prowadzi do dokładnego rozpoznawania tablic rejestracyjnych na zdjęciach.
+
 #
 #
 
@@ -270,3 +274,7 @@ def locate_plate(img: np.ndarray, gray_img):
 ### Result
 
 The result will be saved in a JSON file, containing the recognized license plates for each photo.
+
+### Summary
+
+This project demonstrates how to use image processing and template matching algorithms to recognize license plates. The process includes image processing, character extraction, and template matching, resulting in accurate recognition of license plates in photos.
