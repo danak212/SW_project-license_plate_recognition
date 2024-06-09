@@ -2,13 +2,9 @@ import cv2 as cv
 import numpy as np
 from imutils import contours
 
-def char_det(source):
-    # Function to load a set of characters from files
-    # Funkcja wczytująca zestaw znaków z plików
-    chars = {}
 
-    # Listing all files in the source directory
-    # Listowanie wszystkich plików w katalogu źródłowym
+def char_det(source):
+    chars = {}
     char_files = list(source.iterdir())
 
     # Iterating through files and loading images
@@ -28,6 +24,7 @@ def char_det(source):
 
     return chars
 
+
 def char_matching(char, chars):
     # Function to match an extracted character to a set of characters
     # Funkcja dopasowująca wycięty znak do zestawu znaków
@@ -42,8 +39,6 @@ def char_matching(char, chars):
         chars[key] = cv.convertScaleAbs(chars[key])
         char = cv.convertScaleAbs(char)
 
-        # Template matching using a different method
-        # Dopasowywanie wzorca przy użyciu innej metody
         match_result = cv.matchTemplate(char, chars[key], cv.TM_CCOEFF_NORMED)
 
         # Finding the minimum and maximum values and their locations
@@ -51,8 +46,6 @@ def char_matching(char, chars):
         min_val, max_value, min_loc, max_loc = cv.minMaxLoc(match_result)
 
         if max_value > highest_score:
-            # Updating the best match
-            # Aktualizacja najlepszego dopasowania
             best_match = key
             highest_score = max_value
 
@@ -99,11 +92,9 @@ def extract_plate_chars(plate_img, char_set, idx):
         # Definiowanie punktów źródłowych i docelowych do transformacji perspektywicznej
         src_pts = np.array([[x, y], [x + w, y], [x, y + h], [x + w, y + h]], dtype="float32")
         dst_pts = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype="float32")
-        # Compute the perspective transformation matrix
-        # Wyznaczanie macierzy transformacji perspektywicznej
+        # Compute the perspective transformation matrix and their apply
+        # Wyznaczanie macierzy transformacji perspektywicznej i jej zastosowanie
         M = cv.getPerspectiveTransform(src_pts, dst_pts)
-        # Apply the perspective transformation
-        # Zastosowanie transformacji perspektywicznej
         warped = cv.warpPerspective(plate_img, M, (w, h))
         roi_characters.append(warped)
 
@@ -124,30 +115,45 @@ def extract_plate_chars(plate_img, char_set, idx):
 
 
 def enhance_plate_image(plate_img, orig_img, idx):
+    # Apply bilateral filtering to reduce noise while preserving edges
     # Zastosowanie filtrowania bilateralnego w celu zredukowania szumów przy zachowaniu krawędzi
     plate_img = cv.bilateralFilter(plate_img, 20, 50, 50)
+
+    # Apply Gaussian blur for further smoothing
     # Zastosowanie rozmycia gaussowskiego do dalszego wygładzania obrazu
     plate_img = cv.blur(plate_img, (7, 7))
 
+    # Apply Otsu thresholding
     # Zastosowanie progowania Otsu
     ret, otsu_thresh = cv.threshold(plate_img, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU)
+
+    # Erode the image after thresholding to remove small noise
     # Erozja obrazu po progowaniu w celu usunięcia drobnych szumów
     otsu_thresh = cv.erode(otsu_thresh, np.ones((7, 7), np.uint8))
+
+    # Find contours on the thresholded image
     # Wyszukiwanie konturów na progowanym obrazie
     otsu_contours, otsu_hierarchy = cv.findContours(otsu_thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
+    # Apply adaptive thresholding
     # Zastosowanie adaptacyjnego progowania
     adaptive_thresh = cv.adaptiveThreshold(plate_img, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 11, 1)
+
+    # Apply morphological closing and opening to improve the image structure
     # Operacje morfologiczne zamykania i otwierania w celu poprawy struktury obrazu
     adaptive_thresh = cv.morphologyEx(adaptive_thresh, cv.MORPH_CLOSE, (7, 7))
     adaptive_thresh = cv.erode(adaptive_thresh, np.ones((7, 7), np.uint8))
     adaptive_thresh = cv.morphologyEx(adaptive_thresh, cv.MORPH_OPEN, (7, 7))
+
+    # Find contours on the adaptively thresholded image
     # Wyszukiwanie konturów na adaptacyjnie progowanym obrazie
     adaptive_contours, adaptive_hierarchy = cv.findContours(adaptive_thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
+    # Convert threshold images to BGR format
     # Konwersja obrazów progowych do formatu BGR
     otsu_thresh_bgr = cv.cvtColor(otsu_thresh, cv.COLOR_GRAY2BGR)
 
+    # Create empty masks for threshold images
     # Tworzenie pustych masek dla obrazów progowych
     mask_otsu = np.zeros_like(otsu_thresh_bgr)
     mask_adaptive = np.zeros_like(otsu_thresh_bgr)
@@ -155,6 +161,7 @@ def enhance_plate_image(plate_img, orig_img, idx):
     contours_adaptive_list = []
     combined_mask = np.zeros_like(otsu_thresh_bgr)
 
+    # Find rectangular contours on the Otsu thresholded image
     # Wyszukiwanie prostokątnych konturów na obrazie progowym Otsu
     for i, cnt in enumerate(otsu_contours):
         approx = cv.approxPolyDP(cnt, 0.05 * cv.arcLength(cnt, True), True)
@@ -163,6 +170,7 @@ def enhance_plate_image(plate_img, orig_img, idx):
             if (2 <= (w / h) <= 7) or (0.1 <= (w / h) <= 0.5):
                 contours_otsu_list.append(cnt)
 
+    # Find rectangular contours on the adaptively thresholded image
     # Wyszukiwanie prostokątnych konturów na adaptacyjnie progowanym obrazie
     for i, cnt in enumerate(adaptive_contours):
         approx = cv.approxPolyDP(cnt, 0.05 * cv.arcLength(cnt, True), True)
@@ -173,6 +181,7 @@ def enhance_plate_image(plate_img, orig_img, idx):
     approx = []
     meanTooLow = False
 
+    # If candidates are found in both thresholded images, create a combined mask
     # Jeśli znaleziono kandydatów w obu obrazach progowych, tworzymy wspólną maskę
     if contours_otsu_list and contours_adaptive_list:
         largest_otsu = sorted(contours_otsu_list, key=cv.contourArea)[0]
@@ -197,6 +206,7 @@ def enhance_plate_image(plate_img, orig_img, idx):
             meanTooLow = True
             mask_adaptive = np.zeros_like(otsu_thresh_bgr)
 
+    # If only the Otsu thresholded image has candidates, create a mask based on this image
     # Jeśli tylko obraz progowy Otsu ma kandydatów, tworzymy maskę na podstawie tego obrazu
     if meanTooLow or not contours_adaptive_list and contours_otsu_list:
         largest_otsu = sorted(contours_otsu_list, key=cv.contourArea, reverse=True)[0]
@@ -212,6 +222,7 @@ def enhance_plate_image(plate_img, orig_img, idx):
         approx = cv.convexHull(contours_combined_mask[0])
         combined_mask = mask_otsu
 
+    # If only the adaptively thresholded image has candidates, create a mask based on this image
     # Jeśli tylko adaptacyjnie progowany obraz ma kandydatów, tworzymy maskę na podstawie tego obrazu
     if contours_adaptive_list and not contours_otsu_list:
         largest_adaptive = sorted(contours_adaptive_list, key=cv.contourArea, reverse=True)[0]
@@ -224,14 +235,16 @@ def enhance_plate_image(plate_img, orig_img, idx):
         contours_combined_mask = sorted(
             contours_combined_mask, key=lambda x: cv.contourArea(x), reverse=True
         )
-        cv.drawContours(mask_adaptive, [contours_combined_mask[0]], -1, (0.255, 0), 5)
+        cv.drawContours(mask_adaptive, [contours_combined_mask[0]], -1, (0, 255, 0), 5)
         approx = cv.convexHull(contours_combined_mask[0])
         combined_mask = mask_adaptive
 
+    # If no mask could be created, return a black image
     # Jeśli nie udało się utworzyć maski, zwracamy czarny obraz
     if not combined_mask.any():
         combined_mask = np.zeros_like(otsu_thresh_bgr)
     try:
+        # Find the corners of the mask
         # Szukanie narożników maski
         LG = [0, 0]
         LD = [0, plate_img.shape[0]]
@@ -250,12 +263,15 @@ def enhance_plate_image(plate_img, orig_img, idx):
                     approx.reshape(len(approx), -1)[min_index][1],
                 ]
             )
+        # Apply the mask to the Otsu thresholded image
         # Nakładanie maski na obraz progowy Otsu
         result = cv.bitwise_and(otsu_thresh_bgr, combined_mask)
+        # List of destination points for the license plate size
         # Lista punktów docelowych o rozmiarze tablicy rejestracyjnej
         pts2 = np.array(
             [[0, 0], [0, 112 * 2], [520 * 2, 112 * 2], [520 * 2, 0]], np.float32
         )
+        # Perspective transformation
         # Przekształcenie perspektywiczne
         matrix = cv.getPerspectiveTransform(
             np.float32(np.array(mask_corners).reshape(4, 2)), pts2
@@ -263,9 +279,11 @@ def enhance_plate_image(plate_img, orig_img, idx):
         result = cv.warpPerspective(
             cv.cvtColor(result, cv.COLOR_BGR2GRAY), matrix, (520 * 2, 112 * 2)
         )
+        # Add a border to the image
         # Dodanie ramki do obrazu
         result = cv.copyMakeBorder(result, 5, 5, 5, 5, cv.BORDER_CONSTANT, None, 255)
 
+        # If the white area exceeds 20%, return the result
         # Jeśli biały obszar przekracza 20%, zwracamy rezultat
         if cv.countNonZero(result) / (result.shape[0] * result.shape[1]) > 0.2:
             return result
@@ -292,8 +310,6 @@ def locate_plate(img: np.ndarray, gray_img):
     # Użycie filtru Canny'ego do wykrywania krawędzi
     edges = cv.Canny(img, 30, 45)
 
-    # Apply dilation, erosion, opening, and closing to improve line quality and white areas
-    # Zastosowanie dylacji, erozji, operacji otwarcia i zamknięcia w celu poprawy jakości linii i białych obszarów
     dilate_size = 5
     struct_element = cv.getStructuringElement(cv.MORPH_RECT, (dilate_size, dilate_size))
     processed_img = cv.dilate(edges, struct_element, iterations=1)
