@@ -7,12 +7,23 @@ from imutils import contours
 def char_det(source):
     # Funkcja wczytująca zestaw znaków z plików
     chars = {}
-    for char_file in source.iterdir():
+
+    # Listowanie wszystkich plików w katalogu źródłowym
+    char_files = list(source.iterdir())
+
+    # Iterowanie po plikach i wczytywanie obrazów
+    for char_file in char_files:
         # Pobranie nazwy pliku bez rozszerzenia jako nazwy znaku
         char_name = char_file.stem
+
         # Wczytanie obrazu znaku jako obraz w skali szarości
-        chars[char_name] = cv.imread(str(char_file), 0)
+        char_image = cv.imread(str(char_file), cv.IMREAD_GRAYSCALE)
+
+        # Przechowywanie obrazu w słowniku z nazwą znaku jako klucz
+        chars[char_name] = char_image
+
     return chars
+
 
 
 def char_matching(char, chars):
