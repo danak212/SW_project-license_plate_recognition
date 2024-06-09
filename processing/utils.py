@@ -1,95 +1,125 @@
 import cv2 as cv
 import numpy as np
-import imutils
 from imutils import contours
 
-
 def char_det(source):
+    # Function to load a set of characters from files
     # Funkcja wczytująca zestaw znaków z plików
     chars = {}
 
+    # Listing all files in the source directory
     # Listowanie wszystkich plików w katalogu źródłowym
     char_files = list(source.iterdir())
 
+    # Iterating through files and loading images
     # Iterowanie po plikach i wczytywanie obrazów
     for char_file in char_files:
+        # Getting the filename without the extension as the character name
         # Pobranie nazwy pliku bez rozszerzenia jako nazwy znaku
         char_name = char_file.stem
 
+        # Reading the character image as a grayscale image
         # Wczytanie obrazu znaku jako obraz w skali szarości
         char_image = cv.imread(str(char_file), cv.IMREAD_GRAYSCALE)
 
+        # Storing the image in a dictionary with the character name as the key
         # Przechowywanie obrazu w słowniku z nazwą znaku jako klucz
         chars[char_name] = char_image
 
     return chars
 
-
-
 def char_matching(char, chars):
+    # Function to match an extracted character to a set of characters
     # Funkcja dopasowująca wycięty znak do zestawu znaków
     highest_score = 0
     best_match = None
+
+    # Iterating over the keys in the character dictionary
+    # Iterowanie po kluczach w słowniku znaków
     for key in chars:
+        # Converting images to uint8 type
         # Przekształcenie obrazów na typ uint8
-        chars[key] = chars[key].astype(np.uint8)
-        char = char.astype(np.uint8)
-        # Dopasowywanie wzorca
-        match_result = cv.matchTemplate(char, chars[key], cv.TM_CCOEFF)
-        _, max_value, _, _ = cv.minMaxLoc(match_result)
+        chars[key] = cv.convertScaleAbs(chars[key])
+        char = cv.convertScaleAbs(char)
+
+        # Template matching using a different method
+        # Dopasowywanie wzorca przy użyciu innej metody
+        match_result = cv.matchTemplate(char, chars[key], cv.TM_CCOEFF_NORMED)
+
+        # Finding the minimum and maximum values and their locations
+        # Znalezienie minimalnej i maksymalnej wartości oraz ich lokalizacji
+        min_val, max_value, min_loc, max_loc = cv.minMaxLoc(match_result)
+
         if max_value > highest_score:
+            # Updating the best match
             # Aktualizacja najlepszego dopasowania
             best_match = key
             highest_score = max_value
+
     return str(best_match)
 
 
 def extract_plate_chars(plate_img, char_set, idx):
+    # Convert the license plate image to BGR
     # Konwersja obrazu tablicy rejestracyjnej do BGR
     plate_bgr = cv.cvtColor(plate_img, cv.COLOR_GRAY2BGR)
+
+    # Find external contours of the characters on the inverted mask
     # Szukanie konturów zewnętrznych znaków na odwróconej masce
-    contours_found = cv.findContours(
-        np.bitwise_not(plate_img), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE
+    contours_found, _ = cv.findContours(
+        cv.bitwise_not(plate_img), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE
     )
-    contour_list = imutils.grab_contours(contours_found)
     try:
+        # Sort contours from left to right
         # Sortowanie konturów od lewej do prawej
-        (contour_list, bboxes) = contours.sort_contours(contour_list, method="left-to-right")
+        (contours_found, bboxes) = contours.sort_contours(contours_found, method="left-to-right")
     except:
         pass
+
     potential_chars = []
-    for i, contour in enumerate(contour_list):
+    for contour in contours_found:
         x, y, w, h = cv.boundingRect(contour)
+        # Select contours with appropriate proportions
         # Wybieranie konturów o odpowiednich proporcjach
         if h >= plate_img.shape[0] / 3 and 0.13 <= w / h <= 1.22:
             potential_chars.append(contour)
-        sorted_chars = sorted(
-            potential_chars,
-            key=lambda a: cv.boundingRect(a)[2],
-        )
+
+    # Draw contours on the plate image
+    # Rysowanie konturów na obrazie tablicy
     cv.drawContours(plate_bgr, potential_chars, -1, (0, 255, 0), 2)
+
     roi_characters = []
+    # Create a bounding box for each candidate and save it to the list
     # Tworzenie bounding boxa dla każdego kandydata i zapis do listy
     for candidate in potential_chars:
         x, y, w, h = cv.boundingRect(candidate)
         if h < 0.5 * plate_img.shape[0]:
             continue
-        pts_source = np.float32([[x, y], [x + w, y], [x, y + h], [x + w, y + h]])
-        pts_dest = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
-        transform_matrix = cv.getPerspectiveTransform(pts_source, pts_dest)
-        transformed_char = cv.warpPerspective(plate_img, transform_matrix, (w, h))
+        # Define source and destination points for perspective transformation
+        # Definiowanie punktów źródłowych i docelowych do transformacji perspektywicznej
+        src_pts = np.array([[x, y], [x + w, y], [x, y + h], [x + w, y + h]], dtype="float32")
+        dst_pts = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype="float32")
+        # Compute the perspective transformation matrix
+        # Wyznaczanie macierzy transformacji perspektywicznej
+        M = cv.getPerspectiveTransform(src_pts, dst_pts)
+        # Apply the perspective transformation
+        # Zastosowanie transformacji perspektywicznej
+        warped = cv.warpPerspective(plate_img, M, (w, h))
+        roi_characters.append(warped)
 
-        roi_characters.append(transformed_char)
     plate_text = []
+    # Resize the extracted characters to 64x64 and perform template matching
     # Skalowanie wyciętych znaków do rozmiaru 64x64 i dopasowywanie wzorca
-    for i, roi in enumerate(roi_characters):
+    for roi in roi_characters:
         resized_char = cv.resize(roi, (64, 64), interpolation=cv.INTER_AREA)
         if cv.countNonZero(resized_char) / (resized_char.shape[0] * resized_char.shape[1]) > 0.85:
             continue
         plate_text.append(char_matching(resized_char, char_set))
-    # Zmiana '0' na 'O' dla pierwszych trzech pozycji w stringu tablicy
-    for i, char in enumerate(plate_text):
-        char = "O" if (char == "0" and i < 3) else char
+
+    # Ensure '0' remains '0' for the first three positions
+    # Upewnienie się, że '0' pozostaje '0' dla pierwszych trzech pozycji
+    plate_text = [char if char != '0' else '0' for i, char in enumerate(plate_text)]
+
     return "".join(plate_text)
 
 
@@ -246,97 +276,101 @@ def enhance_plate_image(plate_img, orig_img, idx):
 
 
 def adjust_contrast(image: np.ndarray) -> np.ndarray:
+    # Setting the contrast factor
     # Ustawienie współczynnika kontrastu
-    contrast_factor = 1.1
-    # Zastosowanie konwersji skali dla obrazu z określonym współczynnikiem kontrastu
-    enhanced_image = cv.convertScaleAbs(image, alpha=contrast_factor)
-    return enhanced_image
+    alpha = 1.1
+    beta = 0
+
+    # Applying contrast adjustment using arithmetic operations on the image matrix
+    # Zastosowanie zmiany kontrastu przy użyciu operacji arytmetycznych na macierzy obrazu
+    adjusted = cv.addWeighted(image, alpha, np.zeros(image.shape, image.dtype), 0, beta)
+    return adjusted
 
 
 def locate_plate(img: np.ndarray, gray_img):
+    # Use Canny filter to detect edges
     # Użycie filtru Canny'ego do wykrywania krawędzi
     edges = cv.Canny(img, 30, 45)
 
+    # Apply dilation, erosion, opening, and closing to improve line quality and white areas
     # Zastosowanie dylacji, erozji, operacji otwarcia i zamknięcia w celu poprawy jakości linii i białych obszarów
     dilate_size = 5
-    struct_element = cv.getStructuringElement(
-        cv.MORPH_RECT,
-        (dilate_size, dilate_size),
-    )
+    struct_element = cv.getStructuringElement(cv.MORPH_RECT, (dilate_size, dilate_size))
     processed_img = cv.dilate(edges, struct_element, iterations=1)
 
+    # Find contours in the entire image
     # Wyszukiwanie konturów na całym obrazie
     contours, hierarchy = cv.findContours(processed_img, cv.RETR_TREE, cv.CHAIN_APPROX_NONE)
     potential_plates = []
     plate_candidates = []
     plate_bboxes = []
     for i, contour in enumerate(contours):
+        # If the contour approximation has 4 points, it is a potential rectangular plate
         # Jeśli aproksymacja konturu ma 4 punkty, to jest potencjalną prostokątną tablicą
         approx = cv.approxPolyDP(contour, 0.04 * cv.arcLength(contour, True), True)
         if len(approx) == 4:
             x, y, w, h = cv.boundingRect(contour)
             ratio = float(h / w)
             area = cv.contourArea(contour)
+            # Rejecting too small candidates with incorrect proportions
             # Odrzucenie zbyt małych kandydatów o złych proporcjach
-            if (
-                    area >= ((img.shape[0] / 3) * (img.shape[1] / 3)) * 0.3
-                    and 0.15 <= ratio <= 0.5
-            ):
+            if area >= ((img.shape[0] / 3) * (img.shape[1] / 3)) * 0.3 and 0.15 <= ratio <= 0.5:
                 potential_plates.append(contour)
                 bbox = cv.boundingRect(approx)
-                x, y, w, h = bbox
                 plate_bboxes.append(bbox)
+                # Extracting the candidate plate
                 # Wycięcie kandydata na tablicę
+                x, y, w, h = bbox
                 plate_candidates.append(
                     gray_img[
                         int(y * 0.95): int((y + h) * 1.05),
                         int(x * 0.95): int((x + w) * 1.05),
                     ]
                 )
-    if not len(plate_candidates):
+    if not plate_candidates:
+        # If no plates are found, repeat the operation using adaptive thresholding
         # Jeśli nie znaleziono tablic, powtórz operację używając adaptacyjnego progowania
-        adaptive_thresh = cv.adaptiveThreshold(
-            img, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 23, 1
-        )
+        adaptive_thresh = cv.adaptiveThreshold(img, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 23, 1)
         adaptive_thresh = cv.morphologyEx(adaptive_thresh, cv.MORPH_CLOSE, (6, 6))
-        color_thresh = cv.cvtColor(adaptive_thresh, cv.COLOR_GRAY2BGR)
         contours_adaptive, h = cv.findContours(adaptive_thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-        try:
-            for i, cnt in enumerate(contours_adaptive):
-                approx = cv.approxPolyDP(cnt, 0.02 * cv.arcLength(cnt, True), True)
-                if cv.contourArea(cnt) > 8000 and len(approx) == 4:
-                    cv.drawContours(color_thresh, [cnt], -1, (0, 255, 0), 7)
-                    potential_plates.append(contour)
-                    bbox = cv.boundingRect(approx)
-                    x, y, w, h = bbox
-                    plate_bboxes.append(bbox)
-                    plate_candidates.append(
-                        gray_img[
-                            int(y * 0.95): int((y + h) * 1.05),
-                            int(x * 0.95): int((x + w) * 1.05),
-                        ]
-                    )
-        except:
-            pass
+        for i, cnt in enumerate(contours_adaptive):
+            approx = cv.approxPolyDP(cnt, 0.02 * cv.arcLength(cnt, True), True)
+            if cv.contourArea(cnt) > 8000 and len(approx) == 4:
+                bbox = cv.boundingRect(approx)
+                potential_plates.append(contour)
+                plate_bboxes.append(bbox)
+                x, y, w, h = bbox
+                plate_candidates.append(
+                    gray_img[
+                        int(y * 0.95): int((y + h) * 1.05),
+                        int(x * 0.95): int((x + w) * 1.05),
+                    ]
+                )
     return plate_candidates, plate_bboxes
 
 
 def process_image(image: np.ndarray, chars) -> str:
+    # Convert the image to grayscale
     # Konwersja obrazu na skalę szarości
     gray_image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
 
-    # Zwiększenie kontrastu i zastosowanie filtru bilateralnego w celu redukcji szumów przy zachowaniu krawędzi
-    contrast_enhanced = adjust_contrast(gray_image)
+    # Enhance the contrast of the image
+    # Zwiększenie kontrastu obrazu
+    contrast_enhanced = cv.convertScaleAbs(gray_image, alpha=1.1)
+
+    # Apply bilateral filter to reduce noise while keeping edges sharp
+    # Zastosowanie filtru bilateralnego w celu redukcji szumów przy zachowaniu ostrych krawędzi
     filtered_image = cv.bilateralFilter(contrast_enhanced, 20, 50, 50)
 
-    # Zlokalizowanie potencjalnych kandydatów na tablice
+    # Locate potential license plates
+    # Zlokalizowanie potencjalnych tablic rejestracyjnych
     plate_candidates, candidate_boxes = locate_plate(filtered_image, gray_image)
 
     plate_numbers = []
-    # Dla każdego kandydata, znajdowanie białego obszaru tablicy z numerami
     for i, candidate in enumerate(plate_candidates):
         x, y, w, h = candidate_boxes[i]
-        # Wybieranie obszaru 5% większego, aby uniknąć przycięcia białej tablicy
+        # Select an area 5% larger to avoid cropping the plate
+        # Wybór obszaru 5% większego, aby uniknąć przycięcia tablicy
         enhanced_plate = enhance_plate_image(
             candidate,
             image[
@@ -345,10 +379,12 @@ def process_image(image: np.ndarray, chars) -> str:
             ],
             i,
         )
-        # Dla każdej białej tablicy, znajdowanie numeru i dodawanie do listy potencjalnych znaków
+        # Extract characters from the plate
+        # Ekstrakcja znaków z tablicy
         plate_numbers.append(extract_plate_chars(enhanced_plate, chars, i))
 
-    # Odrzucenie zbyt długich sekwencji, sortowanie i zwracanie najdłuższego poprawnego wyniku
+    # Filter out overly long sequences and return the longest valid result
+    # Odrzucenie zbyt długich sekwencji i zwrócenie najdłuższego poprawnego wyniku
     plate_numbers = [num for num in plate_numbers if len(num) <= 8]
     plate_numbers = sorted(plate_numbers, key=lambda x: len(x))
     result_number = plate_numbers[0] if len(plate_numbers) and len(plate_numbers[0]) else "P012345"
